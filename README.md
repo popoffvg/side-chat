@@ -4,18 +4,9 @@ A Claude Code mod that opens a side chat beside the main chat. The side chat tal
 
 Use it to ask a quick question about the work while Claude goes on with the main task, without a new turn in the main thread and without a change to its context.
 
-```
-╭ Side chat ──────────────────────────────────────────────╮
-│ > why did it pick a timer and not await the fork?        │
-│ A hook has a time budget. A fork can take seconds, so    │
-│ the hook starts it from $.clock.after(0) and returns.    │
-│ Thinking…                                                │
-│ ┌──────────────────────────────────────────────────────┐ │
-│ │ Ask the side chat                              send │ │
-│ └──────────────────────────────────────────────────────┘ │
-│ [Use in prompt]  [New]  [Close]                          │
-╰──────────────────────────────────────────────────────────╯
-```
+![The side chat pane next to the main thread, which runs its tests](docs/pane.svg)
+
+The picture is drawn to match the terminal, not captured from it.
 
 ## Install
 

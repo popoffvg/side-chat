@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14">
+  <rect width="900" height="420" rx="10" fill="#1e1e2e"/>
+  <circle cx="22" cy="20" r="6" fill="#f38ba8"/>
+  <circle cx="42" cy="20" r="6" fill="#f9e2af"/>
+  <circle cx="62" cy="20" r="6" fill="#a6e3a1"/>
+  <text x="450" y="25" fill="#6c7086" text-anchor="middle">claude</text>
+
+  <text x="24" y="66" fill="#cdd6f4">&gt; move the parser to its own package</text>
+  <text x="24" y="96" fill="#d97757">●</text><text x="44" y="96" fill="#cdd6f4">Update(internal/parse/parse.go)</text>
+  <text x="44" y="118" fill="#6c7086">  ⎿ Added 42 lines</text>
+  <text x="24" y="146" fill="#d97757">●</text><text x="44" y="146" fill="#cdd6f4">Update(cmd/main.go)</text>
+  <text x="44" y="168" fill="#6c7086">  ⎿ Updated 3 lines</text>
+  <text x="24" y="196" fill="#d97757">✻</text><text x="44" y="196" fill="#6c7086">Running the tests…</text>
+
+  <rect x="470" y="44" width="414" height="360" rx="6" fill="#181825" stroke="#585b70"/>
+  <text x="486" y="66" fill="#d97757" font-weight="bold">Side chat</text>
+  <text x="486" y="96" fill="#cdd6f4" font-weight="bold">&gt; why a new package and not a file</text>
+  <text x="486" y="116" fill="#cdd6f4" font-weight="bold">  in the same one?</text>
+  <text x="486" y="146" fill="#cdd6f4">Two other commands import the parser.</text>
+  <text x="486" y="166" fill="#cdd6f4">In its own package they stop pulling</text>
+  <text x="486" y="186" fill="#cdd6f4">in the whole cmd tree, and the tests</text>
+  <text x="486" y="206" fill="#cdd6f4">run without the CLI flags.</text>
+  <text x="486" y="236" fill="#6c7086">The main thread does not see this chat.</text>
+
+  <rect x="486" y="300" width="382" height="54" rx="4" fill="none" stroke="#585b70"/>
+  <text x="498" y="322" fill="#6c7086">Ask the side chat</text>
+  <text x="852" y="344" fill="#6c7086" text-anchor="end">send</text>
+  <text x="486" y="386" fill="#89b4fa">[Use in prompt]</text>
+  <text x="626" y="386" fill="#89b4fa">[New]</text>
+  <text x="686" y="386" fill="#89b4fa">[Close]</text>
+</svg>
