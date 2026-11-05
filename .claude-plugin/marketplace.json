@@ -1,0 +1,16 @@
+{
+  "name": "side-chat",
+  "owner": {
+    "name": "Vitalii Popov"
+  },
+  "metadata": {
+    "description": "Chat with a fork of this conversation in a pane beside the main chat"
+  },
+  "plugins": [
+    {
+      "name": "side-chat",
+      "source": "./",
+      "description": "Chat with a fork of this conversation in a pane beside the main chat"
+    }
+  ]
+}
