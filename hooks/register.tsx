@@ -7,6 +7,13 @@ const PANE = 'side-chat'
 const thread = atom({ plugin: 'side-chat', key: 'thread' } as const, [], { shape: 'thread-1' })
 const isWaiting = atom({ plugin: 'side-chat', key: 'isWaiting' } as const, false)
 
+// One row per author of a turn: the header, its color, whether a box frames the turn, and whether the text is markdown.
+const AUTHORS = {
+  you: { label: 'You', color: 'suggestion', hasFrame: true, isMarkdown: false },
+  claude: { label: 'Claude', color: 'claude', hasFrame: false, isMarkdown: true },
+  error: { label: 'Error', color: 'error', hasFrame: false, isMarkdown: false },
+} as const
+
 const sidePrompt = (turns: SideTurn[], question: string): string =>
   [
     'This is a side chat, a branch of the conversation above. The main thread does not see it.',
@@ -46,7 +53,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'side' }, async ($, e) => {
-    await $.ui.open({ id: PANE, title: 'Side chat', focus: true, closeOnEscape: true })
+    await $.ui.open({ id: PANE, title: 'Side chat', focus: true, closeOnEscape: true, backgroundColor: 'transparent' })
     void ask($, e.args)
 
     return { text: 'Side chat opened.' }
@@ -61,16 +68,23 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {turns.length === 0 && <Text dimColor>Ask about the conversation. The main thread does not see this chat.</Text>}
-        {turns.map(turn =>
-          turn.author === 'you' ? (
-            <Text bold>{'> '}{turn.text}</Text>
-          ) : turn.author === 'error' ? (
-            <Text color="red">{turn.text}</Text>
-          ) : (
-            <Markdown text={turn.text} />
-          ),
-        )}
-        {waiting && <Text dimColor>Thinking…</Text>}
+        {turns.map((turn, i) => {
+          const author = AUTHORS[turn.author]
+          return (
+            <Box
+              key={`turn-${i}`}
+              flexDirection="column"
+              marginBottom={1}
+              paddingX={author.hasFrame ? 1 : 0}
+              borderStyle={author.hasFrame ? 'round' : undefined}
+              borderColor={author.color}
+            >
+              <Text bold color={author.color}>{author.label}</Text>
+              {author.isMarkdown ? <Markdown text={turn.text} /> : <Text>{turn.text}</Text>}
+            </Box>
+          )
+        })}
+        {waiting && <Text dimColor>Claude is thinking…</Text>}
         <Input key="question" placeholder="Ask the side chat" submitLabel="send" autoFocus rows={3} onSubmit={value => void ask($, value)} />
         <Box>
           <Button key="use" label="Use in prompt" onPress={() => lastReply && $.prompt.fill({ text: lastReply.text, mode: 'append' })} />
