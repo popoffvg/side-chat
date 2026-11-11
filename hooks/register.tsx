@@ -10,7 +10,7 @@ const isWaiting = atom({ plugin: 'side-chat', key: 'isWaiting' } as const, false
 // One row per author of a turn: the header, its color, whether a box frames the turn, and whether the text is markdown.
 const AUTHORS = {
   you: { label: 'You', color: 'suggestion', hasFrame: true, isMarkdown: false },
-  claude: { label: 'Claude', color: 'claude', hasFrame: false, isMarkdown: true },
+  claude: { label: 'Claude', color: 'claude', hasFrame: true, isMarkdown: true },
   error: { label: 'Error', color: 'error', hasFrame: false, isMarkdown: false },
 } as const
 
