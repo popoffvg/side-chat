@@ -5,7 +5,7 @@ import type { SideTurn } from '../types'
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'side', description: 'Open a side chat with a fork of this conversation; /side <question> asks it' })
+    await $.command.register({ name: 'side', description: 'Open a side chat with a fork of this conversation; /side <question> asks it', immediate: true })
 
     return next(e)
   })
