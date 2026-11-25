@@ -36,7 +36,7 @@ The mod needs a Claude Code build that loads mods (hooks modules).
 | `/side <question>` | Opens the pane and asks the question. |
 | type in the pane, then `send` | Asks the next question. The side chat keeps its own thread. |
 | **Use in prompt** | Adds the last side-chat answer to the main prompt box. |
-| **New** | Clears the side-chat thread. |
+| **New** | Clears the side-chat thread and stops waiting for an open answer. |
 | **Close** or `Esc` | Closes the pane. The thread stays for the session. |
 
 See [examples/](examples/) for sample sessions.

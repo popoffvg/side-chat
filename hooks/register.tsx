@@ -70,7 +70,7 @@ export const register: Register = on => {
         <Box>
           <Button key="use" label="Use in prompt" onPress={() => lastReply && $.prompt.fill({ text: lastReply.text, mode: 'append' })} />
           <Text> </Text>
-          <Button key="new" label="New" onPress={() => update($, thread, () => [])} />
+          <Button key="new" label="New" onPress={() => startNewThread($)} />
           <Text> </Text>
           <Button key="close" label="Close" onPress={() => $.ui.close({ id: PANE })} />
         </Box>
@@ -170,16 +170,19 @@ const spawnReaderNotingFallbacks = async ($: EngineInterface, prompt: string): P
   const denials: string[] = []
   for (const subagentType of AGENT_TYPES) {
     if (denials.length > 0) await appendNotice($, `Trying ${subagentType} without the conversation: ${denials.at(-1)}`)
-    try {
-      const started = await $.agent.spawn({ prompt, subagentType, description: 'side chat', name: 'side-chat' })
-      if (started.agentId !== undefined) return { agentId: started.agentId }
-      denials.push(`spawn ${subagentType}: ${started.deny ?? 'no agent id'}`)
-    } catch (error) {
-      denials.push(`spawn ${subagentType}: ${String(error)}`)
-    }
+    // A thrown spawn may have started the agent, so it ends the tries; only a refusal falls back.
+    const started = await $.agent.spawn({ prompt, subagentType, description: 'side chat', name: 'side-chat' })
+    if (started.agentId !== undefined) return { agentId: started.agentId }
+    denials.push(`spawn ${subagentType}: ${started.deny ?? 'no agent id'}`)
   }
 
   return { deny: denials.join('; ') }
+}
+
+// Empties `thread` and sets `openQuestion` to null, so a question whose answer never came no longer blocks the next one.
+const startNewThread = async ($: EngineInterface): Promise<void> => {
+  await update($, thread, () => [])
+  await update($, openQuestion, () => null)
 }
 
 const sidePrompt = (turns: SideTurn[], question: string): string =>
