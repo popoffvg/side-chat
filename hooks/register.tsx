@@ -128,15 +128,27 @@ const openAndAskQuestion = async ($: EngineInterface, question: string): Promise
   const questionId = `${Date.now()}-${Math.random()}`
   const claimed = await update($, openQuestion, current => current ?? questionId)
   if (claimed !== questionId) return
-  const before = await read($, thread)
-  await update($, thread, list => [...list, { author: 'you', text } as SideTurn])
-  const started = await spawnReader($, sidePrompt(before, text))
-  const notices = 'deny' in started ? [`No reply: ${started.deny}`] : started.fallbacks.map(reason => `Answered without the conversation: ${reason}`)
-  await update($, thread, list => [...list, ...notices.map(text => ({ author: 'error', text }) as SideTurn)])
-  if ('deny' in started) await update($, openQuestion, current => (current === questionId ? null : current))
+  let hasAgent = false
+  try {
+    const before = await read($, thread)
+    await update($, thread, list => [...list, { author: 'you', text } as SideTurn])
+    const started = await spawnReader($, sidePrompt(before, text))
+    hasAgent = !('deny' in started)
+    await update($, thread, list => [...list, ...spawnNoticeTurns(started)])
+  } finally {
+    if (!hasAgent) await update($, openQuestion, current => (current === questionId ? null : current))
+  }
 }
 
-const spawnReader = async ($: EngineInterface, prompt: string): Promise<{ agentId: string; fallbacks: string[] } | { deny: string }> => {
+const spawnNoticeTurns = (started: SpawnOutcome): SideTurn[] => {
+  const notices = 'deny' in started ? [`No reply: ${started.deny}`] : started.fallbacks.map(reason => `Answered without the conversation: ${reason}`)
+
+  return notices.map(text => ({ author: 'error', text }))
+}
+
+type SpawnOutcome = { agentId: string; fallbacks: string[] } | { deny: string }
+
+const spawnReader = async ($: EngineInterface, prompt: string): Promise<SpawnOutcome> => {
   const denials: string[] = []
   for (const subagentType of AGENT_TYPES) {
     try {
