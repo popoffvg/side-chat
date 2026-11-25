@@ -70,7 +70,7 @@ export const register: Register = on => {
         <Box>
           <Button key="use" label="Use in prompt" onPress={() => lastReply && $.prompt.fill({ text: lastReply.text, mode: 'append' })} />
           <Text> </Text>
-          <Button key="new" label="New" onPress={() => startNewThread($)} />
+          <Button key="new" label="New" onPress={() => update($, thread, () => [])} />
           <Text> </Text>
           <Button key="close" label="Close" onPress={() => $.ui.close({ id: PANE })} />
         </Box>
@@ -178,13 +178,6 @@ const spawnReaderNotingFallbacks = async ($: EngineInterface, prompt: string): P
 
   return { deny: denials.join('; ') }
 }
-
-// Empties `thread` and sets `openQuestion` to null, so a question whose answer never came no longer blocks the next one.
-const startNewThread = async ($: EngineInterface): Promise<void> => {
-  await update($, thread, () => [])
-  await update($, openQuestion, () => null)
-}
-
 const sidePrompt = (turns: SideTurn[], question: string): string =>
   [
     'This is a side chat, a branch of the conversation above. The main thread does not see it.',
