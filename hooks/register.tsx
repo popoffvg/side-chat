@@ -12,13 +12,13 @@ export const register: Register = on => {
 
   on('command.run', { command: 'side' }, async ($, e) => {
     await $.ui.open({ id: PANE, title: 'Side chat', focus: true, closeOnEscape: true, backgroundColor: 'transparent' })
-    void ask($, e.args)
+    void openAndAskQuestion($, e.args)
 
     return { text: 'Side chat opened.' }
   })
 
   on('tool.check', async ($, e, next) => {
-    if (e.agentId === undefined || e.agentId !== (await read($, askingAgent))) return next(e)
+    if (!(await isSideChatAgent($, e.agentId))) return next(e)
     if (!isReadOnlyCall(e.tool, e.isReadOnly === true)) {
       return { decision: 'deny', reason: `side chat: ${e.tool} is not a read-only call; use ${READ_ONLY_TOOL_NAMES}` }
     }
@@ -29,10 +29,10 @@ export const register: Register = on => {
   }).catch(() => ({ decision: 'deny', reason: 'side chat: the read-only check failed' }))
 
   on('agent.report', async ($, e, next) => {
-    if (e.agentId !== (await read($, askingAgent))) return next(e)
+    if (!(await isSideChatAgent($, e.agentId))) return next(e)
     const answer: SideTurn = e.status === 'completed' ? { author: 'claude', text: e.text } : { author: 'error', text: `No reply (${e.status}): ${e.text}` }
     await update($, thread, list => [...list, answer])
-    await update($, askingAgent, () => null)
+    await update($, openQuestion, () => null)
 
     return { consumed: 'side chat answer' }
   })
@@ -40,7 +40,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Markdown, Input, Button } = $.ui.resolve(e)
     const turns = await read($, thread)
-    const isAsking = (await read($, askingAgent)) !== null
+    const isAsking = (await read($, openQuestion)) !== null
     const lastReply = turns.findLast(turn => turn.author === 'claude')
 
     return (
@@ -63,7 +63,7 @@ export const register: Register = on => {
           )
         })}
         {isAsking && <Text dimColor>Claude is reading…</Text>}
-        <Input key="question" placeholder="Ask the side chat" submitLabel="send" autoFocus rows={3} onSubmit={value => void ask($, value)} />
+        <Input key="question" placeholder="Ask the side chat" submitLabel="send" autoFocus rows={3} onSubmit={value => void openAndAskQuestion($, value)} />
         <Box>
           <Button key="use" label="Use in prompt" onPress={() => lastReply && $.prompt.fill({ text: lastReply.text, mode: 'append' })} />
           <Text> </Text>
@@ -76,9 +76,11 @@ export const register: Register = on => {
   })
 }
 
+const PLUGIN = 'side-chat'
 const PANE = 'side-chat'
 const thread = atom({ plugin: 'side-chat', key: 'thread' } as const, [], { shape: 'thread-1' })
-const askingAgent = atom({ plugin: 'side-chat', key: 'askingAgent' } as const, null)
+// The id of the question that waits for its answer; null when the side chat takes a new question.
+const openQuestion = atom({ plugin: 'side-chat', key: 'openQuestion' } as const, null)
 
 // One row per author of a turn: the header, its color, whether a box frames the turn, and whether the text is markdown.
 const AUTHORS = {
@@ -111,26 +113,35 @@ const isReadOnlyCall = (tool: string, isReadOnlyInput: boolean): boolean => {
   return isReadOnlyInput || !row.needsReadOnlyInput
 }
 
-const ask = async ($: EngineInterface, question: string): Promise<void> => {
+// A side-chat agent is one this plugin spawned; the agent list says so from its start, before `spawn` resolves.
+const isSideChatAgent = async ($: EngineInterface, agentId: string | undefined): Promise<boolean> => {
+  if (agentId === undefined) return false
+  const agents = await $.agent.list()
+
+  return agents.some(agent => agent.id === agentId && agent.spawnedBy === PLUGIN)
+}
+
+// Opens the question in `openQuestion` and appends it to `thread`; a question that comes while one is open is dropped.
+const openAndAskQuestion = async ($: EngineInterface, question: string): Promise<void> => {
   const text = question.trim()
-  if (text === '' || (await read($, askingAgent)) !== null) return
+  if (text === '') return
+  const questionId = `${Date.now()}-${Math.random()}`
+  const claimed = await update($, openQuestion, current => current ?? questionId)
+  if (claimed !== questionId) return
   const before = await read($, thread)
   await update($, thread, list => [...list, { author: 'you', text } as SideTurn])
   const started = await spawnReader($, sidePrompt(before, text))
-  if ('deny' in started) {
-    await update($, thread, list => [...list, { author: 'error', text: `No reply: ${started.deny}` } as SideTurn])
-    return
-  }
-
-  await update($, askingAgent, () => started.agentId)
+  const notices = 'deny' in started ? [`No reply: ${started.deny}`] : started.fallbacks.map(reason => `Answered without the conversation: ${reason}`)
+  await update($, thread, list => [...list, ...notices.map(text => ({ author: 'error', text }) as SideTurn)])
+  if ('deny' in started) await update($, openQuestion, current => (current === questionId ? null : current))
 }
 
-const spawnReader = async ($: EngineInterface, prompt: string): Promise<{ agentId: string } | { deny: string }> => {
+const spawnReader = async ($: EngineInterface, prompt: string): Promise<{ agentId: string; fallbacks: string[] } | { deny: string }> => {
   const denials: string[] = []
   for (const subagentType of AGENT_TYPES) {
     try {
       const started = await $.agent.spawn({ prompt, subagentType, description: 'side chat', name: 'side-chat' })
-      if (started.agentId !== undefined) return { agentId: started.agentId }
+      if (started.agentId !== undefined) return { agentId: started.agentId, fallbacks: denials }
       denials.push(`spawn ${subagentType}: ${started.deny ?? 'no agent id'}`)
     } catch (error) {
       denials.push(`spawn ${subagentType}: ${String(error)}`)
