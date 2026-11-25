@@ -132,28 +132,27 @@ const openAndAskQuestion = async ($: EngineInterface, question: string): Promise
   try {
     const before = await read($, thread)
     await update($, thread, list => [...list, { author: 'you', text } as SideTurn])
-    const started = await spawnReader($, sidePrompt(before, text))
+    const started = await spawnReaderNotingFallbacks($, sidePrompt(before, text))
     hasAgent = !('deny' in started)
-    await update($, thread, list => [...list, ...spawnNoticeTurns(started)])
+    if ('deny' in started) await appendNotice($, `No reply: ${started.deny}`)
   } finally {
     if (!hasAgent) await update($, openQuestion, current => (current === questionId ? null : current))
   }
 }
 
-const spawnNoticeTurns = (started: SpawnOutcome): SideTurn[] => {
-  const notices = 'deny' in started ? [`No reply: ${started.deny}`] : started.fallbacks.map(reason => `Answered without the conversation: ${reason}`)
-
-  return notices.map(text => ({ author: 'error', text }))
+const appendNotice = async ($: EngineInterface, text: string): Promise<void> => {
+  await update($, thread, list => [...list, { author: 'error', text } as SideTurn])
 }
 
-type SpawnOutcome = { agentId: string; fallbacks: string[] } | { deny: string }
-
-const spawnReader = async ($: EngineInterface, prompt: string): Promise<SpawnOutcome> => {
+// Tries each agent type in turn; before a fallback spawns, appends to `thread` why the previous type did not start,
+// so the notice stands above the fallback's answer.
+const spawnReaderNotingFallbacks = async ($: EngineInterface, prompt: string): Promise<{ agentId: string } | { deny: string }> => {
   const denials: string[] = []
   for (const subagentType of AGENT_TYPES) {
+    if (denials.length > 0) await appendNotice($, `Trying ${subagentType} without the conversation: ${denials.at(-1)}`)
     try {
       const started = await $.agent.spawn({ prompt, subagentType, description: 'side chat', name: 'side-chat' })
-      if (started.agentId !== undefined) return { agentId: started.agentId, fallbacks: denials }
+      if (started.agentId !== undefined) return { agentId: started.agentId }
       denials.push(`spawn ${subagentType}: ${started.deny ?? 'no agent id'}`)
     } catch (error) {
       denials.push(`spawn ${subagentType}: ${String(error)}`)

@@ -28,14 +28,15 @@ test('a question sent while another is open starts no second spawn', async ($, o
   expect(spawned).toEqual(['fork', 'Explore'])
 })
 
-test('a refused spawn shows no reply in the pane', async ($, on) => {
+test('a refused fork notes the Explore fallback, and a refused Explore shows no reply', async ($, on) => {
   recordRefusedSpawns(on)
 
   await $.command.run({ command: 'side', args: 'first question' })
   await settle()
 
   const ui = await $.ui.mount({ plugin: 'side-chat', component: 'Pane', requestId: 'side-chat', surface: 'terminal', props: PANE_PROPS })
-  expect((await ui.find({ key: 'turn-1' }))?.text).toBe('ErrorNo reply: spawn fork: no agent id; spawn Explore: no agent id')
+  expect((await ui.find({ key: 'turn-1' }))?.text).toBe('ErrorTrying Explore without the conversation: spawn fork: no agent id')
+  expect((await ui.find({ key: 'turn-2' }))?.text).toBe('ErrorNo reply: spawn fork: no agent id; spawn Explore: no agent id')
 })
 
 test('after a refused spawn the next question spawns again', async ($, on) => {
