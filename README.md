@@ -52,7 +52,7 @@ See [examples/](examples/) for sample sessions.
 ```
 
 - The fork is a background subagent with the main conversation, its model, and its tools. The mod denies every call that is not read-only.
-- Read-only tools: `Read`, `Grep`, `Glob`, `LSP`, `WebFetch`, `WebSearch`, `ToolSearch`, and `Bash` when Claude Code judges the command read-only (for example `git log`, `ls`). Edits, writes, agents, MCP tools, and other commands are denied. A read-only call runs without a permission prompt. A deny rule in your settings still blocks it.
+- The `READ_ONLY_TOOLS` table in [hooks/register.tsx](hooks/register.tsx) lists the tools the fork may call. Edits, writes, agents, MCP tools, and other commands are denied. A read-only call runs without a permission prompt. A deny rule in your settings still blocks it.
 - Before the first turn of a session, and after `/clear`, there is nothing to fork. The mod then starts the `Explore` agent with no history, and the pane says why the fork did not start before Explore answers.
 - The side-chat thread is session state: it lives through a reload of the mod and ends with the session.
 

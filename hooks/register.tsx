@@ -123,7 +123,8 @@ const isSideChatAgent = async ($: EngineInterface, agentId: string | undefined):
   return agents.some(agent => agent.id === agentId && agent.spawnedBy === PLUGIN)
 }
 
-// Opens the question in `openQuestion` and appends it to `thread`; a question that comes while one is open is dropped.
+// Opens the question in `openQuestion`, appends it to `thread`, and adds the started agent to `spawnedAgents`;
+// a question that comes while one is open is dropped.
 const openAndAskQuestion = async ($: EngineInterface, question: string): Promise<void> => {
   const text = question.trim()
   if (text === '') return
@@ -135,8 +136,12 @@ const openAndAskQuestion = async ($: EngineInterface, question: string): Promise
     const before = await read($, thread)
     await update($, thread, list => [...list, { author: 'you', text } as SideTurn])
     const started = await spawnReaderNotingFallbacks($, sidePrompt(before, text))
-    hasAgent = !('deny' in started)
-    if ('deny' in started) await appendNotice($, `No reply: ${started.deny}`)
+    if ('deny' in started) {
+      await appendNotice($, `No reply: ${started.deny}`)
+      return
+    }
+    hasAgent = true
+    await update($, spawnedAgents, ids => [...ids, started.agentId])
   } finally {
     if (!hasAgent) await update($, openQuestion, current => (current === questionId ? null : current))
   }
@@ -163,11 +168,7 @@ const spawnReaderNotingFallbacks = async ($: EngineInterface, prompt: string): P
     if (denials.length > 0) await appendNotice($, `Trying ${subagentType} without the conversation: ${denials.at(-1)}`)
     try {
       const started = await $.agent.spawn({ prompt, subagentType, description: 'side chat', name: 'side-chat' })
-      if (started.agentId !== undefined) {
-        const agentId = started.agentId
-        await update($, spawnedAgents, ids => [...ids, agentId])
-        return { agentId }
-      }
+      if (started.agentId !== undefined) return { agentId: started.agentId }
       denials.push(`spawn ${subagentType}: ${started.deny ?? 'no agent id'}`)
     } catch (error) {
       denials.push(`spawn ${subagentType}: ${String(error)}`)
