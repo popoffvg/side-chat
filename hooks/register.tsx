@@ -17,8 +17,12 @@ export const register: Register = on => {
     return { text: 'Side chat opened.' }
   })
 
+  // A failure of this hook skips it and leaves the engine's own verdict; only a subagent call that cannot be identified is denied.
   on('tool.check', async ($, e, next) => {
-    if (!(await isSideChatAgent($, e.agentId))) return next(e)
+    if (e.agentId === undefined) return next(e)
+    const isSideChat = await isSideChatAgent($, e.agentId).catch(() => null)
+    if (isSideChat === null) return { decision: 'deny', reason: 'side chat: could not tell whether the side-chat agent made this call' }
+    if (!isSideChat) return next(e)
     if (!isReadOnlyCall(e.tool, e.isReadOnly === true)) {
       return { decision: 'deny', reason: `side chat: ${e.tool} is not a read-only call; use ${READ_ONLY_TOOL_NAMES}` }
     }
@@ -26,7 +30,7 @@ export const register: Register = on => {
     if (verdict.decision !== 'ask') return verdict
 
     return { decision: 'allow', reason: 'side chat: a read-only call runs without a prompt' }
-  }).catch(() => ({ decision: 'deny', reason: 'side chat: the read-only check failed' }))
+  })
 
   on('agent.report', async ($, e, next) => {
     if (!(await isSideChatAgent($, e.agentId))) return next(e)
@@ -38,8 +42,8 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Markdown, Input, Button } = $.ui.resolve(e)
-    const turns = await read($, thread)
-    const isAsking = (await read($, openQuestion)) !== null
+    const [turns, question] = await Promise.all([read($, thread), read($, openQuestion)])
+    const isAsking = question !== null
     const lastReply = turns.findLast(turn => turn.author === 'claude')
 
     return (
@@ -131,20 +135,20 @@ const openAndAskQuestion = async ($: EngineInterface, question: string): Promise
   const questionId = `${Date.now()}-${Math.random()}`
   const claimed = await update($, openQuestion, current => current ?? questionId)
   if (claimed !== questionId) return
-  let hasAgent = false
-  try {
-    const before = await read($, thread)
-    await update($, thread, list => [...list, { author: 'you', text } as SideTurn])
-    const started = await spawnReaderNotingFallbacks($, sidePrompt(before, text))
-    if ('deny' in started) {
-      await appendNotice($, `No reply: ${started.deny}`)
-      return
-    }
-    hasAgent = true
-    await update($, spawnedAgents, ids => [...ids, started.agentId])
-  } finally {
-    if (!hasAgent) await update($, openQuestion, current => (current === questionId ? null : current))
+  const started = await appendAndSpawn($, text).catch(error => ({ deny: `the question failed: ${String(error)}` }))
+  if ('deny' in started) {
+    await appendNotice($, `No reply: ${started.deny}`).catch(() => undefined)
+    await update($, openQuestion, current => (current === questionId ? null : current))
+    return
   }
+  await update($, spawnedAgents, ids => [...ids, started.agentId])
+}
+
+const appendAndSpawn = async ($: EngineInterface, text: string): Promise<{ agentId: string } | { deny: string }> => {
+  const before = await read($, thread)
+  await update($, thread, list => [...list, { author: 'you', text } as SideTurn])
+
+  return spawnReaderNotingFallbacks($, sidePrompt(before, text))
 }
 
 // Appends the answer to `thread` and sets `openQuestion` to null, also when the append fails.
