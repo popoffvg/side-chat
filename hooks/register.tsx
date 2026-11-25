@@ -33,9 +33,13 @@ export const register: Register = on => {
   })
 
   on('agent.report', async ($, e, next) => {
-    if (!(await isSideChatAgent($, e.agentId))) return next(e)
+    const open = await read($, openQuestion)
+    const isOpenAgent = open !== null && open.agentId === e.agentId
+    if (!isOpenAgent && !(await isSideChatAgent($, e.agentId).catch(() => false))) return next(e)
     const answer: SideTurn = e.status === 'completed' ? { author: 'claude', text: e.text } : { author: 'error', text: `No reply (${e.status}): ${e.text}` }
-    await appendAnswerAndCloseQuestion($, answer)
+    if (isOpenAgent) await appendAnswerAndCloseQuestion($, open.id, answer)
+    else if (open !== null && open.agentId === null) await keepEarlyAnswer($, e.agentId, answer)
+    else await update($, thread, list => [...list, answer])
 
     return { consumed: 'side chat answer' }
   })
@@ -82,8 +86,10 @@ export const register: Register = on => {
 const PLUGIN = 'side-chat'
 const PANE = 'side-chat'
 const thread = atom({ plugin: 'side-chat', key: 'thread' } as const, [], { shape: 'thread-1' })
-// The id of the question that waits for its answer; null when the side chat takes a new question.
+// The question that waits for its answer, with its agent once `spawn` resolves; null when the side chat takes a new question.
 const openQuestion = atom({ plugin: 'side-chat', key: 'openQuestion' } as const, null)
+// Answers that reached `agent.report` before `spawn` resolved and named their agent, by agent id.
+const earlyAnswers = atom({ plugin: 'side-chat', key: 'earlyAnswers' } as const, {})
 // The ids of the agents this plugin spawned in this session; the agent list may drop an agent that has ended.
 const spawnedAgents = atom({ plugin: 'side-chat', key: 'spawnedAgents' } as const, [])
 
@@ -127,21 +133,42 @@ const isSideChatAgent = async ($: EngineInterface, agentId: string | undefined):
   return agents.some(agent => agent.id === agentId && agent.spawnedBy === PLUGIN)
 }
 
-// Opens the question in `openQuestion`, appends it to `thread`, and adds the started agent to `spawnedAgents`;
-// a question that comes while one is open is dropped.
+// Opens the question in `openQuestion`, appends it to `thread`, adds the started agent to `spawnedAgents`,
+// and names that agent in `openQuestion`; a question that comes while one is open is dropped.
 const openAndAskQuestion = async ($: EngineInterface, question: string): Promise<void> => {
   const text = question.trim()
   if (text === '') return
   const questionId = `${Date.now()}-${Math.random()}`
-  const claimed = await update($, openQuestion, current => current ?? questionId)
-  if (claimed !== questionId) return
+  const claimed = await update($, openQuestion, current => current ?? { id: questionId, agentId: null })
+  if (claimed?.id !== questionId) return
   const started = await appendAndSpawn($, text).catch(error => ({ deny: `the question failed: ${String(error)}` }))
   if ('deny' in started) {
     await appendNotice($, `No reply: ${started.deny}`).catch(() => undefined)
-    await update($, openQuestion, current => (current === questionId ? null : current))
+    await update($, openQuestion, current => (current?.id === questionId ? null : current))
     return
   }
   await update($, spawnedAgents, ids => [...ids, started.agentId])
+  await update($, openQuestion, current => (current?.id === questionId ? { id: questionId, agentId: started.agentId } : current))
+  await deliverEarlyAnswer($, started.agentId)
+}
+
+// Keeps an answer whose agent `openQuestion` does not name yet, then delivers it if the agent was named meanwhile.
+const keepEarlyAnswer = async ($: EngineInterface, agentId: string, answer: SideTurn): Promise<void> => {
+  await update($, earlyAnswers, answers => ({ ...answers, [agentId]: answer }))
+  await deliverEarlyAnswer($, agentId)
+}
+
+// Takes the kept answer of the agent that `openQuestion` names, and closes the question with it.
+const deliverEarlyAnswer = async ($: EngineInterface, agentId: string): Promise<void> => {
+  const open = await read($, openQuestion)
+  if (open === null || open.agentId !== agentId) return
+  let answer = null as SideTurn | null
+  await update($, earlyAnswers, answers => {
+    const { [agentId]: taken, ...rest } = answers
+    answer = taken ?? null
+    return rest
+  })
+  if (answer !== null) await appendAnswerAndCloseQuestion($, open.id, answer)
 }
 
 const appendAndSpawn = async ($: EngineInterface, text: string): Promise<{ agentId: string } | { deny: string }> => {
@@ -151,12 +178,12 @@ const appendAndSpawn = async ($: EngineInterface, text: string): Promise<{ agent
   return spawnReaderNotingFallbacks($, sidePrompt(before, text))
 }
 
-// Appends the answer to `thread` and sets `openQuestion` to null, also when the append fails.
-const appendAnswerAndCloseQuestion = async ($: EngineInterface, answer: SideTurn): Promise<void> => {
+// Appends the answer to `thread` and closes the question in `openQuestion`, also when the append fails.
+const appendAnswerAndCloseQuestion = async ($: EngineInterface, questionId: string, answer: SideTurn): Promise<void> => {
   try {
     await update($, thread, list => [...list, answer])
   } finally {
-    await update($, openQuestion, () => null)
+    await update($, openQuestion, current => (current?.id === questionId ? null : current))
   }
 }
 
