@@ -31,8 +31,7 @@ export const register: Register = on => {
   on('agent.report', async ($, e, next) => {
     if (!(await isSideChatAgent($, e.agentId))) return next(e)
     const answer: SideTurn = e.status === 'completed' ? { author: 'claude', text: e.text } : { author: 'error', text: `No reply (${e.status}): ${e.text}` }
-    await update($, thread, list => [...list, answer])
-    await update($, openQuestion, () => null)
+    await appendAnswerAndCloseQuestion($, answer)
 
     return { consumed: 'side chat answer' }
   })
@@ -137,6 +136,15 @@ const openAndAskQuestion = async ($: EngineInterface, question: string): Promise
     if ('deny' in started) await appendNotice($, `No reply: ${started.deny}`)
   } finally {
     if (!hasAgent) await update($, openQuestion, current => (current === questionId ? null : current))
+  }
+}
+
+// Appends the answer to `thread` and sets `openQuestion` to null, also when the append fails.
+const appendAnswerAndCloseQuestion = async ($: EngineInterface, answer: SideTurn): Promise<void> => {
+  try {
+    await update($, thread, list => [...list, answer])
+  } finally {
+    await update($, openQuestion, () => null)
   }
 }
 
