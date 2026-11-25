@@ -80,6 +80,8 @@ const PANE = 'side-chat'
 const thread = atom({ plugin: 'side-chat', key: 'thread' } as const, [], { shape: 'thread-1' })
 // The id of the question that waits for its answer; null when the side chat takes a new question.
 const openQuestion = atom({ plugin: 'side-chat', key: 'openQuestion' } as const, null)
+// The ids of the agents this plugin spawned in this session; the agent list may drop an agent that has ended.
+const spawnedAgents = atom({ plugin: 'side-chat', key: 'spawnedAgents' } as const, [])
 
 // One row per author of a turn: the header, its color, whether a box frames the turn, and whether the text is markdown.
 const AUTHORS = {
@@ -112,9 +114,10 @@ const isReadOnlyCall = (tool: string, isReadOnlyInput: boolean): boolean => {
   return isReadOnlyInput || !row.needsReadOnlyInput
 }
 
-// A side-chat agent is one this plugin spawned; the agent list says so from its start, before `spawn` resolves.
+// A side-chat agent is one this plugin spawned: `spawnedAgents` knows it after `spawn` resolves, the agent list before.
 const isSideChatAgent = async ($: EngineInterface, agentId: string | undefined): Promise<boolean> => {
   if (agentId === undefined) return false
+  if ((await read($, spawnedAgents)).includes(agentId)) return true
   const agents = await $.agent.list()
 
   return agents.some(agent => agent.id === agentId && agent.spawnedBy === PLUGIN)
@@ -160,7 +163,11 @@ const spawnReaderNotingFallbacks = async ($: EngineInterface, prompt: string): P
     if (denials.length > 0) await appendNotice($, `Trying ${subagentType} without the conversation: ${denials.at(-1)}`)
     try {
       const started = await $.agent.spawn({ prompt, subagentType, description: 'side chat', name: 'side-chat' })
-      if (started.agentId !== undefined) return { agentId: started.agentId }
+      if (started.agentId !== undefined) {
+        const agentId = started.agentId
+        await update($, spawnedAgents, ids => [...ids, agentId])
+        return { agentId }
+      }
       denials.push(`spawn ${subagentType}: ${started.deny ?? 'no agent id'}`)
     } catch (error) {
       denials.push(`spawn ${subagentType}: ${String(error)}`)
