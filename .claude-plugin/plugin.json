@@ -1,7 +1,7 @@
 {
   "name": "side-chat",
-  "version": "0.1.1",
-  "description": "Chat with a fork of this conversation in a pane beside the main chat",
+  "version": "0.2.0",
+  "description": "Chat with a read-only fork of this conversation in a pane beside the main chat",
   "author": { "name": "Vitalii Popov", "url": "https://github.com/popoffvg" },
   "homepage": "https://github.com/popoffvg/side-chat",
   "repository": "https://github.com/popoffvg/side-chat",

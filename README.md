@@ -45,13 +45,15 @@ See [examples/](examples/) for sample sessions.
 
 ```
 /side <question>
-   └─► $.model.fork(side-chat turns so far + question)
-          ├─ the fork reads the main transcript from the prompt cache, with no tools
-          └─► the answer goes into the pane (rendered as markdown)
+   └─► $.agent.spawn({ subagentType: 'fork', prompt: side-chat turns so far + question })
+          ├─ tool.check: a call of the fork outside the read-only table → deny; a read-only call that would ask → allow
+          ├─ the fork reads files and runs read-only commands, in the background
+          └─► agent.report: the answer goes into the pane; the main thread gets no notice
 ```
 
-- The fork uses the same model as the session. It reads the conversation from the prompt cache, so a question costs mostly its own text and the answer.
-- Before the first turn of a session, and after `/clear`, there is nothing to fork. The mod then asks Sonnet with no history.
+- The fork is a background subagent with the main conversation, its model, and its tools. The mod denies every call that is not read-only.
+- Read-only tools: `Read`, `Grep`, `Glob`, `LSP`, `WebFetch`, `WebSearch`, `ToolSearch`, and `Bash` when Claude Code judges the command read-only (for example `git log`, `ls`). Edits, writes, agents, MCP tools, and other commands are denied. A read-only call runs without a permission prompt. A deny rule in your settings still blocks it.
+- Before the first turn of a session, and after `/clear`, there is nothing to fork. The mod then starts the `Explore` agent with no history.
 - The side-chat thread is session state: it lives through a reload of the mod and ends with the session.
 
 ## Development
