@@ -49,3 +49,53 @@ test('after a refused spawn the next question spawns again', async ($, on) => {
 
   expect(spawned).toEqual(['fork', 'Explore', 'fork', 'Explore'])
 })
+
+type Engine = Parameters<Parameters<typeof test>[1]>[0]
+
+// Starts the side-chat agent `a1` with `classify` as the engine's classifier; beneath the plugin, every tool call would ask.
+const startSideChatAgent = async ($: Engine, on: On, classify: (_: unknown, e: { text: string }) => { value: string }): Promise<void> => {
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('agent.spawn', () => ({ model: 'test-model', agentId: 'a1' }))
+  on('tool.check', () => ({ decision: 'ask' }))
+  on('model.classify', classify)
+  await $.command.run({ command: 'side', args: 'question' })
+  await settle()
+}
+
+test('a Bash call the classifier judges read-only runs without a prompt', async ($, on) => {
+  await startSideChatAgent($, on, () => ({ value: 'read-only' }))
+
+  const verdict = await $.tool.check({ tool: 'Bash', input: { command: 'git log -1' }, agentId: 'a1' })
+
+  expect(verdict.decision).toBe('allow')
+})
+
+test('a Bash call the classifier judges to change state is denied', async ($, on) => {
+  await startSideChatAgent($, on, () => ({ value: 'changes-state' }))
+
+  const verdict = await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, agentId: 'a1' })
+
+  expect(verdict.decision).toBe('deny')
+})
+
+test('a Bash call is denied when the classification fails', async ($, on) => {
+  await startSideChatAgent($, on, () => {
+    throw new Error('classifier down')
+  })
+
+  const verdict = await $.tool.check({ tool: 'Bash', input: { command: 'make' }, agentId: 'a1' })
+
+  expect(verdict.decision).toBe('deny')
+})
+
+test('a Bash call the engine judges read-only skips the classifier', async ($, on) => {
+  const classified: string[] = []
+  await startSideChatAgent($, on, (_, e) => {
+    classified.push(e.text)
+    return { value: 'changes-state' }
+  })
+
+  const verdict = await $.tool.check({ tool: 'Bash', input: { command: 'ls' }, agentId: 'a1', isReadOnly: true })
+
+  expect([verdict.decision, classified]).toEqual(['allow', []])
+})

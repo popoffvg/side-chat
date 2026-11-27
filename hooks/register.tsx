@@ -22,7 +22,7 @@ export const register: Register = on => {
     if (e.agentId === undefined) return next(e)
     const role = await roleOf($, e.agentId).catch((): AgentRole => 'maybe-side-chat')
     if (role === 'other') return next(e)
-    if (!isReadOnlyCall(e.tool, e.isReadOnly === true)) {
+    if (!(await isReadOnlyCall($, e.tool, e.input, e.isReadOnly === true))) {
       return { decision: 'deny', reason: `side chat: ${e.tool} is not a read-only call; use ${READ_ONLY_TOOL_NAMES}` }
     }
 
@@ -100,7 +100,8 @@ const AUTHORS = {
   error: { label: 'Error', color: 'error', hasFrame: false, isMarkdown: false },
 } as const
 
-// One row per tool the side-chat agent may call. `needsReadOnlyInput`: the engine must judge this input read-only.
+// One row per tool the side-chat agent may call. `needsReadOnlyInput`: the engine or the classifier must judge this
+// input read-only.
 const READ_ONLY_TOOLS = [
   { tool: 'Read', needsReadOnlyInput: false },
   { tool: 'Grep', needsReadOnlyInput: false },
@@ -117,11 +118,23 @@ const READ_ONLY_TOOL_NAMES = READ_ONLY_TOOLS.map(row => (row.needsReadOnlyInput 
 // The fork answers with the main conversation; a session with nothing to fork yet gets the read-only Explore agent.
 const AGENT_TYPES = ['fork', 'Explore'] as const
 
-const isReadOnlyCall = (tool: string, isReadOnlyInput: boolean): boolean => {
+const READ_ONLY_LABEL = 'read-only'
+const CALL_LABELS = [READ_ONLY_LABEL, 'changes-state'] as const
+
+// The engine's read-only verdict comes first; a call it cannot judge read-only goes to the classifier.
+const isReadOnlyCall = async ($: EngineInterface, tool: string, input: unknown, isReadOnlyInput: boolean): Promise<boolean> => {
   const row = READ_ONLY_TOOLS.find(candidate => candidate.tool === tool)
   if (row === undefined) return false
+  if (isReadOnlyInput || !row.needsReadOnlyInput) return true
 
-  return isReadOnlyInput || !row.needsReadOnlyInput
+  return (await classifyCall($, tool, input)) === READ_ONLY_LABEL
+}
+
+// A failed classification counts as a call that changes state.
+const classifyCall = async ($: EngineInterface, tool: string, input: unknown): Promise<string | undefined> => {
+  const call = `Does this ${tool} call only read, or can it change files, processes, or remote state? ${JSON.stringify(input)}`
+
+  return $.model.classify(call, CALL_LABELS).catch(() => undefined)
 }
 
 const withoutPrompt = (verdict: ToolCheckVerdict): ToolCheckVerdict =>
